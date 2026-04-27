@@ -6,11 +6,11 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { repoUrl } = await req.json();
+    const { repoUrl, collectionName } = await req.json();
     const docs = await loadRepo(repoUrl);
     const chunks = await splitVector(docs);
 
-    const store = await vectorStore();
+    const store = await vectorStore(collectionName);
 
     const batch_size = 50;
 

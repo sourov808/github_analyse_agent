@@ -1,103 +1,80 @@
-import { createAgent, tool } from "langchain";
+
 import { NextResponse } from "next/server";
 
 import { ChatGroq } from "@langchain/groq";
-import z from "zod";
 import { vectorStore } from "@/lib/agents/vector";
 
 export async function POST(req: Request) {
   try {
-    const { query } = await req.json();
+    const { query, collectionName } = await req.json();
 
     if (!query) {
       return NextResponse.json({ error: "query is required" }, { status: 400 });
     }
 
-    const store = await vectorStore();
+    // Test Ollama connectivity
+    try {
+      const res = await fetch("http://localhost:11434/api/tags", {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`Ollama ${res.status}`);
+    } catch {
+      return NextResponse.json(
+        { error: "Ollama not running. Start with: ollama serve" },
+        { status: 503 },
+      );
+    }
 
-    const retriveSchema = z.object({ query: z.string() });
+    const store = await vectorStore(collectionName);
 
-    const retrieve = tool(
-      async ({ query }) => {
-        const retrieveDocs = await store.similaritySearch(query, 5);
 
-        const content = retrieveDocs
-          .map((doc) => `FILE: ${doc.metadata.source}\n${doc.pageContent}`)
-          .join("\n\n");
 
-        return { content, artifact: retrieveDocs };
-      },
-      {
-        name: "retrieve_context",
-        description: "Retrieve relevant code context from the repository",
-        schema: retriveSchema,
-      },
-    );
+    const systemPrompt = `You are an expert developer explaining a codebase.
 
-    const tools = [retrieve];
+RULES:
+1. Base all your answers ONLY on the retrieved files and context provided below.
+2. Do NOT hallucinate features, databases, or APIs not present in the context.
+3. Keep explanations clear, well-structured, and concise.
 
-    const systemPrompt = `You are an expert code analysis assistant helping developers understand GitHub repositories.
-
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-
-1. RETRIEVAL FIRST: ALWAYS use the retrieve_context tool to get relevant code from the repository before answering. Never answer from your training data.
-
-2. STAY GROUNDED: Only answer based on the retrieved context. If context doesn't contain the answer, say "I don't have enough context to answer that" or similar.
-
-3. CITE SOURCES: When referencing code, always mention the file path. Format: "In file: <path>"
-
-4. SHOW CODE: When explaining, include relevant code snippets from the context.
-
-5. BE CONCISE: Provide clear, direct answers. Avoid lengthy explanations unless asked.
-
-6. NO HALLUCINATION: Do not make assumptions about code organization, dependencies, or implementation details not present in context.
-
-7. Structure your responses with:
-   - Direct answer first
-   - Supporting code snippets (if relevant)
-   - File references
-
-If the retrieved context shows multiple implementations, compare them and explain differences.
-
-When analyzing code:
-- Explain what the code does
-- Highlight key patterns or design decisions
-- Point out potential issues if they exist in the code
-- Suggest improvements based on best practices visible in the codebase
-- use markdown for code formatting
-- use bullet points for lists/steps/important points
-
-If asked about architecture, use the file structure and imports to infer relationships.
-If asked about "how to" questions, show code examples from the repository.
-
-Remember: You are analyzing ACTUAL CODE from the repository, not generating generic advice. If unsure, say "I don't know" instead of guessing.`;
-
+FORMAT:
+- Provide a high-level overview.
+- Group the architecture cleanly into Frontend, Backend, and Other.
+- Always cite the specific file paths you are referencing.
+`;
     const llm = new ChatGroq({
       model: "openai/gpt-oss-120b",
+      maxTokens: 4096,
+      temperature: 0.2,
     });
 
-    const agent = createAgent({
-      model: llm,
-      tools,
-      systemPrompt,
-    });
+    // 1. Deterministic RAG Retrieval
+    const docs = await store.similaritySearch(query, 3);
+    const retrievedContext = docs.length === 0 
+      ? "No files found for this query."
+      : docs.map((d) => `FILE: ${d.metadata.source}\nCONTENT: ${d.pageContent.slice(0, 1500)}...`).join("\n\n");
 
-    const message = {
-      messages: [
-        {
-          role: "user",
-          content: query,
-        },
-      ],
-    };
+    const fullPrompt = `${systemPrompt}\n\n==========\nRETRIEVED CONTEXT:\n${retrievedContext}\n==========`;
 
-    const result = await agent.invoke(message);
+    // 2. Direct LLM Invocation (Bypassing Agent Recursion Loops)
+    const result = await llm.invoke([
+      { role: "system", content: fullPrompt },
+      { role: "user", content: query }
+    ]);
 
-    const output = result.messages.at(-1)?.content;
+    // 3. Extract output safely
+    let content = "";
+    if (typeof result.content === "string") {
+      content = result.content;
+    } else if (Array.isArray(result.content)) {
+      content = result.content.map((c: any) => c.text || "").join("");
+    }
 
-    return NextResponse.json({ AI: output });
+    return NextResponse.json({ content });
   } catch (error) {
-    console.log(error);
-    return NextResponse.json({ error: "Failed to load repo" });
+    console.error("[AGENT] Fatal:", error);
+    return NextResponse.json(
+      { error: "Agent error", details: String(error) },
+      { status: 500 },
+    );
   }
 }

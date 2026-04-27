@@ -12,6 +12,7 @@ import { GitHubUrlInput } from "@/components/github-url-input";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { Header } from "@/components/header";
 import { UploadProgress } from "@/components/upload-progress";
+import { BackgroundBeams } from "@/components/ui/background-beams";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export default function Home() {
   const [isReady, setIsReady] = useState(false);
   const [repoName, setRepoName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [collectionName, setCollectionName] = useState("");
   const [currentStep, setCurrentStep] = useState(0);
 
   const extractRepoName = (url: string): string => {
@@ -41,12 +43,13 @@ export default function Home() {
     return url;
   };
 
-  const handleAnalyze = async (url: string) => {
+  const handleAnalyze = async (url: string, collName?: string) => {
     setError("");
     setIsAnalyzing(true);
     setCurrentStep(0);
     setRepoName(extractRepoName(url));
     setRepoUrl(url);
+    setCollectionName(collName || "github-analyzer");
 
     const progressInterval = setInterval(() => {
       setCurrentStep((prev) => {
@@ -62,7 +65,7 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl: url }),
+        body: JSON.stringify({ repoUrl: url, collectionName: collName }),
       });
 
       if (!response.ok) {
@@ -103,14 +106,15 @@ export default function Home() {
     setIsReady(false);
     setRepoUrl("");
     setRepoName("");
+    setCollectionName("");
     setCurrentStep(0);
   };
 
   return (
-    <main className="flex-1 flex flex-col min-h-screen">
-      <Header />
-      
-      <div className="flex-1 flex flex-col px-4 py-6 md:py-8 max-w-7xl mx-auto w-full pb-20">
+    <main className="flex-1 flex flex-col min-h-screen relative">
+      <BackgroundBeams />
+      <div className="relative z-10 flex-1 flex flex-col px-4 py-6 md:py-8 max-w-7xl mx-auto w-full pb-20">
+        <Header />
         {/* Hero Section */}
         <div className="text-center space-y-4 mb-6 md:mb-8 flex-shrink-0">
           <div className="inline-flex items-center justify-center p-3 md:p-4 rounded-2xl bg-primary/10 mb-3">
@@ -137,7 +141,7 @@ export default function Home() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 min-h-0 pb-8">
           {/* Left Panel - Repository & Status */}
-          <div className="w-full lg:w-80 xl:w-96 flex flex-col gap-4 flex-shrink-0 lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+          <div className="w-full lg:w-80 xl:w-96 flex flex-col gap-4 flex-shrink-0">
             {/* URL Input Card */}
             <Card className="shadow-sm">
               <CardHeader className="pb-3">
@@ -223,11 +227,11 @@ export default function Home() {
           </div>
 
           {/* Right Panel - Chat Interface */}
-          <div className="flex-1 min-h-0 lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-10rem)]">
+          <div className="flex-1 min-h-0">
             {isReady ? (
               <Card className="h-full rounded-lg border shadow-sm flex flex-col">
                 <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-                  <ChatInterface repositoryName={repoName} />
+                  <ChatInterface repositoryName={repoName} collectionName={collectionName} />
                 </CardContent>
               </Card>
             ) : (

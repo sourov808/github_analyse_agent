@@ -1,9 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { User, Bot } from "lucide-react";
+import { User, Bot, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownRenderer } from "./markdown-renderer";
 
 export interface ChatMessage {
@@ -44,12 +43,11 @@ export function ChatMessageItem({ message, isLoading }: ChatMessageItemProps) {
           </span>
         </div>
 
-        <div className="prose prose-sm max-w-none dark:prose-invert">
+         <div className="prose prose-sm max-w-none dark:prose-invert">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
+            <div className="flex items-center gap-2 text-muted-foreground italic py-1 border-l-2 border-primary pl-3 bg-primary/5 rounded-r-md">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="animate-pulse">Searching codebase...</span>
             </div>
           ) : (
             <MarkdownRenderer content={message.content} />

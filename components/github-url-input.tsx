@@ -7,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 interface GitHubUrlInputProps {
-  onAnalyze: (url: string) => Promise<void>;
+  onAnalyze: (url: string, collectionName?: string) => Promise<void>;
   isAnalyzing: boolean;
 }
 
 export function GitHubUrlInput({ onAnalyze, isAnalyzing }: GitHubUrlInputProps) {
   const [url, setUrl] = useState("");
+  const [collectionName, setCollectionName] = useState("");
   const [error, setError] = useState("");
 
   const validateGitHubUrl = (value: string): boolean => {
@@ -31,6 +32,20 @@ export function GitHubUrlInput({ onAnalyze, isAnalyzing }: GitHubUrlInputProps) 
     return true;
   };
 
+  const validateCollectionName = (value: string): boolean => {
+    if (!value.trim()) {
+      // Allow empty, will use default
+      return true;
+    }
+    const collectionRegex = /^[a-zA-Z0-9_-]{1,255}$/;
+    if (!collectionRegex.test(value)) {
+      setError("Collection name can only contain letters, numbers, hyphens, and underscores (1-255 characters)");
+      return false;
+    }
+    setError("");
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -38,8 +53,12 @@ export function GitHubUrlInput({ onAnalyze, isAnalyzing }: GitHubUrlInputProps) 
       return;
     }
 
+    if (collectionName.trim() && !validateCollectionName(collectionName)) {
+      return;
+    }
+
     try {
-      await onAnalyze(url.trim());
+      await onAnalyze(url.trim(), collectionName.trim() || undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to analyze repository";
       toast.error(message);
@@ -77,12 +96,26 @@ export function GitHubUrlInput({ onAnalyze, isAnalyzing }: GitHubUrlInputProps) 
         )}
       </div>
 
-      {error && (
+      {error && url && (
         <div className="flex items-center gap-2 text-sm text-destructive" id="url-error">
           <AlertCircle className="h-4 w-4" />
           <span>{error}</span>
         </div>
       )}
+
+      <div>
+        <Input
+          type="text"
+          placeholder="Collection name (optional, default: github-analyzer)"
+          value={collectionName}
+          onChange={(e) => setCollectionName(e.target.value)}
+          disabled={isAnalyzing}
+          className="h-10 text-sm"
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          Leave blank to use default collection. Use alphanumeric, hyphens, and underscores only.
+        </p>
+      </div>
 
       <Button
         type="submit"

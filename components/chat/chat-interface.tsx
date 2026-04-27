@@ -10,19 +10,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 interface ChatInterfaceProps {
   repositoryName: string;
   repoUrl?: string;
+  collectionName?: string;
 }
 
-export function ChatInterface({ repositoryName, repoUrl }: ChatInterfaceProps) {
+export function ChatInterface({ repositoryName, repoUrl, collectionName = "github-analyzer" }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isQueryLoading, setIsQueryLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    if (scrollRef.current) {
-      const viewport = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-      }
+    // Find the scroll area viewport and scroll to bottom
+    const viewport = document.querySelector("[data-radix-scroll-area-viewport]");
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   };
 
@@ -41,35 +41,52 @@ export function ChatInterface({ repositoryName, repoUrl }: ChatInterfaceProps) {
     setMessages((prev) => [...prev, userMessage]);
     setIsQueryLoading(true);
 
+    // Create an assistant message that will be streamed
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
+
     try {
       const response = await fetch("/api/ag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, collectionName }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get response from agent");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.error || errorData.details || "Failed to get response from agent";
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
 
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.AI || "No response received",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Update the assistant message with the response content
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: data.content || "" }
+            : msg
+        )
+      );
     } catch (error) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `Error: ${error instanceof Error ? error.message : "Failed to process your request"}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      console.error("[FRONTEND] Error:", error);
+      // Update the assistant message with error
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: `Error: ${error instanceof Error ? error.message : "Failed to process your request"}`,
+              }
+            : msg
+        )
+      );
     } finally {
       setIsQueryLoading(false);
     }
@@ -109,28 +126,29 @@ export function ChatInterface({ repositoryName, repoUrl }: ChatInterfaceProps) {
                 The AI assistant will search through the code to provide accurate answers.
               </p>
             </div>
-          ) : (
-            <div className="space-y-4 max-w-4xl mx-auto">
-              {messages.map((message) => (
-                <ChatMessageItem
-                  key={message.id}
-                  message={message}
-                  isLoading={isQueryLoading && message.id === messages[messages.length - 1]?.id && message.role === "assistant" && messages[messages.length - 1] !== message}
-                />
-              ))}
-              {isQueryLoading && messages[messages.length - 1]?.role === "user" && (
-                <ChatMessageItem
-                  message={{
-                    id: "loading",
-                    role: "assistant",
-                    content: "",
-                    timestamp: new Date(),
-                  }}
-                  isLoading
-                />
-              )}
-            </div>
-          )}
+            ) : (
+              <div className="space-y-4 max-w-4xl mx-auto">
+                {messages.map((message) => (
+                  <ChatMessageItem
+                    key={message.id}
+                    message={message}
+                    isLoading={isQueryLoading && message.id === messages[messages.length - 1]?.id && message.role === "assistant"}
+                  />
+                ))}
+
+                {isQueryLoading && messages[messages.length - 1]?.role === "user" && (
+                  <ChatMessageItem
+                    message={{
+                      id: "loading",
+                      role: "assistant",
+                      content: "",
+                      timestamp: new Date(),
+                    }}
+                    isLoading
+                  />
+                )}
+              </div>
+            )}
         </ScrollArea>
 
         <div className="p-4 border-t bg-muted/30 flex-shrink-0">
